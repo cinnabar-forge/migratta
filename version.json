@@ -1,7 +1,7 @@
 {
   "cfVersion": 1,
-  "package": "@cinnabar-forge/cf-migrations",
-  "name": "Cinnabar Forge Migrations",
+  "package": "migratta",
+  "name": "Migratta",
   "major": 0,
   "minor": 3,
   "patch": 2,

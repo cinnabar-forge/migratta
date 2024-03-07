@@ -1,11 +1,13 @@
 {
-  "name": "@cinnabar-forge/cf-migrations",
+  "name": "migratta",
   "version": "0.3.2",
+  "license": "ISC",
   "author": {
     "name": "Timur Moziev",
-    "email": "timur@moziev.ru",
-    "url": "https://moziev.ru"
+    "email": "timur.moziev@gmail.com",
+    "url": "https://timurrin.github.io"
   },
+  "type": "module",
   "main": "migrate.js",
   "types": "migrate.d.ts",
   "files": [
@@ -14,10 +16,13 @@
     "version.json"
   ],
   "scripts": {
+    "declare-types": "tsc -d --allowJs --emitDeclarationOnly migrate.js",
+    "lint": "npx eslint --fix --ext .js,.json .",
     "test": "mocha migrate.test.js"
   },
   "devDependencies": {
-    "mocha": "^10.2.0"
-  },
-  "type": "module"
+    "@cinnabar-forge/eslint-plugin": "0.2.1",
+    "eslint-plugin-jsdoc": "48.0.2",
+    "mocha": "10.2.0"
+  }
 }
