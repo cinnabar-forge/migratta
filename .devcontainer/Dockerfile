@@ -1,3 +1,3 @@
-FROM docker.io/node:22.13.0
+FROM docker.io/node:22.20.0
 
 USER node
