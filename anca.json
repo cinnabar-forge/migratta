@@ -24,8 +24,8 @@
         "type": "nodejs-package-lock-json"
       },
       {
-        "path": "./src/cinnabar.js",
-        "type": "javascript",
+        "path": "./src/cinnabar.ts",
+        "type": "typescript",
         "updateBuild": true
       }
     ],

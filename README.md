@@ -4,7 +4,9 @@ _By Cinnabar Forge_
 
 > **DISCLAIMER**: This project is not production ready. All versions below 1.0.0 should be considered unstable
 
-Database migrations library
+Database migrations library.
+
+Currently SQLite-only.
 
 ## Installation
 
@@ -25,7 +27,11 @@ import cfMigrations from "migratta";
 const db = new Database("./default.sqlite");
 
 // Init migrations object
-const migrations = cfMigrations("0.1.0");
+const migrations = cfMigrations({
+  appVersion: "0.1.0",
+  firstRevisionId: 1,
+  ignoreTransactionStatements: false,
+});
 
 // Init migrations DB 'migrations' table
 db.exec(migrations.getMigrationTableSqlCreateQuery());

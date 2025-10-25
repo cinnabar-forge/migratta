@@ -17,24 +17,33 @@
     }
   ],
   "files": [
-    "src"
+    "dist"
   ],
   "type": "module",
-  "main": "src/index.js",
-  "types": "src/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cinnabar-forge/migratta.git"
   },
   "scripts": {
+    "build": "tsup",
+    "build:dev": "tsc",
     "check": "biome check ./src",
-    "fix": "biome check --fix --unsafe ./src",
-    "test": "npm run check && mocha './test'"
+    "fix": "biome check --fix --unsafe ./src ./test",
+    "prepack": "npm run build",
+    "test": "npm run check && npm run build:dev && mocha './build/dev/test'"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
+    "@cinnabar-forge/meta": "0.4.3",
+    "@types/chai": "5.2.3",
+    "@types/mocha": "10.0.10",
+    "@types/node": "24.9.1",
     "chai": "6.2.0",
-    "mocha": "11.7.4"
+    "mocha": "11.7.4",
+    "tsup": "8.5.0",
+    "typescript": "5.9.3"
   },
   "engines": {
     "node": ">=18.0.0"

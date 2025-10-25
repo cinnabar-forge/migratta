@@ -1,14 +1,25 @@
-let dialect;
+import type {
+  Args,
+  Column,
+  ColumnParams,
+  ColumnType,
+  LatestMigration,
+  MigrationStep,
+  Migratta,
+  Settings,
+  Table,
+} from "./types";
 
-let _appVersion;
+const migrations: MigrationStep[][] = [];
+const tables: Record<string, Table> = {};
 
-const EMPTY_OBJECT = {};
+let settings: Settings = {};
 
-const migrations = [];
+function setSettings(_settings?: Settings) {
+  settings = _settings || {};
+}
 
-const tables = {};
-
-function resetContext() {
+function resetContext(): void {
   migrations.length = 0;
   const props = Object.getOwnPropertyNames(tables);
   for (let i = 0; i < props.length; i++) {
@@ -16,44 +27,47 @@ function resetContext() {
   }
 }
 
-function getSqlDialect() {
-  return dialect;
-}
-
-function setSqlDialect(value) {
-  dialect = value;
-}
-
-function createMigration() {
+function createMigration(): void {
   migrations.push([
     {
+      query: settings?.useOldMigrationTableQuery
+        ? `INSERT INTO "migrations" ("revision", "app_version", "date_migrated") VALUES (?, ?, ?);`
+        : `INSERT INTO "migrations" ("id", "version", "timestamp") VALUES (?, ?, ?);`,
       args: [
-        migrations.length,
-        _appVersion || "-",
+        migrations.length + (settings?.firstRevisionId ?? 1),
+        settings.appVersion || "-",
         Math.round(Date.now() / 1000),
       ],
-      query: `INSERT INTO "migrations" ("revision", "app_version", "date_migrated") VALUES (?, ?, ?);`,
     },
   ]);
 }
 
-function addSql(query, args) {
+function addSql(query: string, args?: Args[]): void {
   const currentMigration = migrations[migrations.length - 1];
-  currentMigration.push({ args, query });
+  currentMigration.push({ query, args });
 }
 
-function getColumnQueryPart(columnName, column) {
-  const columnQuery = [];
+function addScript(callback: () => void): void {
+  const currentMigration = migrations[migrations.length - 1];
+  currentMigration.push({ callback });
+}
+
+function addAsyncScript(callbackPromise: () => Promise<void>): void {
+  const currentMigration = migrations[migrations.length - 1];
+  currentMigration.push({ callbackPromise });
+}
+
+function getColumnQueryPart(columnName: string, column: Column): string {
+  const columnQuery: string[] = [];
   columnQuery.push(`"${columnName}"`);
+
   if (column.type === "ID") {
     columnQuery.push("INTEGER PRIMARY KEY AUTOINCREMENT");
   } else if (column.type === "FOREIGN") {
     columnQuery.push("INTEGER");
   } else {
     columnQuery.push(column.type.toUpperCase());
-    // if (column.primaryKey) {
-    //   columnQuery.push("PRIMARY KEY");
-    // }
+
     if (column.autoIncrement) {
       columnQuery.push("AUTOINCREMENT");
     }
@@ -62,22 +76,20 @@ function getColumnQueryPart(columnName, column) {
     }
     if (column.default != null) {
       columnQuery.push(`DEFAULT ${wrapValue(column.default)}`);
-    } else if (column.notNull && !column.unique) {
-      throw new Error(
-        "'notNull' argument should be used with 'default' argument",
-      );
     }
   }
 
   return columnQuery.join(" ");
 }
 
-function getTableCreationSqlQuery(name, columns) {
-  const columnsQuery = [];
-
-  const primaryKeys = [];
-  const uniques = [];
-  const foreigns = [];
+function getTableCreationSqlQuery(
+  name: string,
+  columns: Record<string, Column>,
+): string {
+  const columnsQuery: string[] = [];
+  const primaryKeys: string[] = [];
+  const uniques: string[] = [];
+  const foreigns: Array<{ column: string; table: string }> = [];
 
   for (const [columnName, column] of Object.entries(columns)) {
     if (column.type !== "ID" && column.primaryKey) {
@@ -114,7 +126,7 @@ function getTableCreationSqlQuery(name, columns) {
   return `CREATE TABLE "${name}" (${columnsQuery.join(", ")});`;
 }
 
-function createTable(name, columns) {
+function createTable(name: string, columns: Record<string, Column>): void {
   if (tables[name] != null) {
     removeTable(name);
   }
@@ -127,22 +139,22 @@ function createTable(name, columns) {
   addSql(getTableCreationSqlQuery(name, columns));
 }
 
-function recreateTable(tableName, columns, fromId) {
-  let newColumns;
-  if (columns == null) {
-    newColumns = tables[tableName].columns;
-  }
-
+function recreateTable(
+  tableName: string,
+  columns?: Record<string, Column> | null,
+  fromId?: boolean,
+): void {
+  const newColumns = columns ?? tables[tableName].columns;
   const tempTableName = `${tableName}_tmp`;
 
   addSql(getTableCreationSqlQuery(tempTableName, newColumns));
 
-  const recreatedColumnCurrent = [];
-  const recreatedColumnPrevious = [];
+  const recreatedColumnCurrent: string[] = [];
+  const recreatedColumnPrevious: string[] = [];
 
   for (const columnName of Object.keys(newColumns)) {
-    const column = tables[tableName].columns[columnName] ?? EMPTY_OBJECT;
-    const params = tables[tableName].params[columnName] ?? EMPTY_OBJECT;
+    const column = tables[tableName].columns[columnName] ?? {};
+    const params = tables[tableName].params[columnName] ?? {};
 
     if (fromId && column.type === "ID") {
       continue;
@@ -169,12 +181,21 @@ function recreateTable(tableName, columns, fromId) {
   addSql(`ALTER TABLE "${tempTableName}" RENAME TO "${tableName}";`);
 }
 
-function removeTable(tableName) {
+function renameTable(oldTableName: string, newTableName: string): void {
+  addSql(`ALTER TABLE ${oldTableName} RENAME TO ${newTableName};";`);
+}
+
+function removeTable(tableName: string): void {
   delete tables[tableName];
   addSql(`DROP TABLE "${tableName}";`);
 }
 
-function addTableColumn(tableName, columnName, column, params) {
+function addTableColumn(
+  tableName: string,
+  columnName: string,
+  column: Column,
+  params?: ColumnParams,
+): void {
   tables[tableName].columns[columnName] = column;
   if (params != null) {
     tables[tableName].params[columnName] = params;
@@ -191,7 +212,11 @@ function addTableColumn(tableName, columnName, column, params) {
   }
 }
 
-function renameTableColumn(tableName, columnName, newColumnName) {
+function renameTableColumn(
+  tableName: string,
+  columnName: string,
+  newColumnName: string,
+): void {
   tables[tableName].columns[newColumnName] =
     tables[tableName].columns[columnName];
   delete tables[tableName].columns[columnName];
@@ -200,7 +225,12 @@ function renameTableColumn(tableName, columnName, newColumnName) {
   addSql(query);
 }
 
-function changeTableColumn(tableName, columnName, column, params) {
+function changeTableColumn(
+  tableName: string,
+  columnName: string,
+  column?: Column,
+  params?: ColumnParams,
+): void {
   if (column != null) {
     tables[tableName].columns[columnName] = column;
   }
@@ -209,66 +239,81 @@ function changeTableColumn(tableName, columnName, column, params) {
   }
 }
 
-function deleteTableColumn(tableName, columnName) {
+function deleteTableColumn(tableName: string, columnName: string): void {
   delete tables[tableName].columns[columnName];
 }
 
-function getMigrationTableSqlCreateQuery() {
-  return `CREATE TABLE IF NOT EXISTS "migrations" ("revision" INTEGER NOT NULL PRIMARY KEY, "app_version" TEXT NOT NULL, "date_migrated" INTEGER NOT NULL);`;
+function getMigrationTableSqlCreateQuery(): string {
+  return `CREATE TABLE IF NOT EXISTS "migrations" ("id" INTEGER NOT NULL PRIMARY KEY, "version" TEXT NOT NULL, "timestamp" INTEGER NOT NULL);`;
 }
 
-function getMigrationRevisionSqlSelectQuery() {
-  return `SELECT MAX(revision) as "latest_revision", "app_version", "date_migrated" FROM "migrations";`;
+function getMigrationRevisionSqlSelectQuery(): string {
+  return settings?.useOldMigrationTableQuery
+    ? `SELECT MAX("revision") as "latest_revision", "app_version" AS "version", "date_migrated" AS "timestamp" FROM "migrations";`
+    : `SELECT MAX("id") as "latest_revision", "version", "timestamp" FROM "migrations";`;
 }
 
-function getMigrationsSqlQueries(latestMigration) {
-  if (latestMigration.latest_revision != null) {
-    console.log(
-      `Last database migration: ${new Date(
-        latestMigration.date_migrated * 1000,
-      ).toISOString()} (r${latestMigration.latest_revision}, v${
-        latestMigration.app_version
-      })`,
-    );
-  } else {
-    latestMigration.latest_revision = -1;
-    console.log("Migration history is empty");
-  }
+function getMigrationsSqlQueries(
+  latestMigration?: LatestMigration,
+): MigrationStep[] {
+  const revisionOffset = settings?.firstRevisionId ?? 1;
+  const nextRevision = migrations.length + revisionOffset - 1;
+  const latestRevision =
+    latestMigration?.latest_revision || -1 + revisionOffset;
 
-  if (
-    latestMigration.latest_revision != null &&
-    latestMigration.latest_revision === migrations.length - 1
-  ) {
-    console.log("Database is up-to-date");
+  if (migrations.length === 0) {
+    console.log("[migratta] no migrations found");
     return [];
   }
 
-  const queries = [];
+  if (latestMigration?.latest_revision != null) {
+    console.log(
+      `[migratta] last database migration: ${new Date(
+        latestMigration.timestamp * 1000,
+      ).toISOString()} (r${latestMigration.latest_revision}, v${
+        latestMigration.version
+      })`,
+    );
+  } else {
+    console.log("[migratta] migration history is empty");
+  }
 
-  queries.push({ query: "BEGIN TRANSACTION;" });
+  if (latestRevision != null && latestRevision === nextRevision) {
+    console.log("[migratta] database is up-to-date");
+    return [];
+  }
 
-  if (latestMigration.latest_revision < migrations.length) {
-    console.log(`Target migration revision ID: ${migrations.length - 1}`);
+  const queries: MigrationStep[] = [];
+
+  if (!settings?.ignoreTransactionStatements) {
+    queries.push({ query: "BEGIN TRANSACTION;" });
+  }
+
+  if (latestRevision < nextRevision) {
+    console.log(`[migratta] target migration revision ID: ${nextRevision}`);
     for (
-      let revision = latestMigration.latest_revision + 1;
-      revision < migrations.length;
+      let revision = latestRevision + 1;
+      revision <= nextRevision;
       revision++
     ) {
-      if (migrations[revision] != null) {
-        queries.push(...migrations[revision]);
+      if (migrations[revision - 1] != null) {
+        queries.push(...migrations[revision - 1]);
       }
     }
   }
 
-  queries.push({ query: "COMMIT TRANSACTION;" });
-  queries.push({ query: "VACUUM;" });
+  if (!settings?.ignoreTransactionStatements) {
+    queries.push({ query: "COMMIT TRANSACTION;" });
+  }
 
-  console.log(`...${queries.length} SQL query(ies) have been generated`);
+  console.log(
+    `[migratta] ...${queries.length} SQL query(ies) have been generated`,
+  );
 
   return queries;
 }
 
-function getTypescriptTypesFile() {
+function getTypescriptTypesFile(): string {
   let typescriptFileContents = "// Database types, generated by Migratta\n\n";
 
   for (const [tableName, table] of Object.entries(tables)) {
@@ -277,7 +322,7 @@ function getTypescriptTypesFile() {
 
     for (const [columnName, column] of Object.entries(table.columns)) {
       const notNull = !column.notNull && column.type !== "ID" ? "?" : "";
-      let type;
+      let type: string;
       switch (column.type) {
         case "ID":
         case "INTEGER":
@@ -302,14 +347,17 @@ function getTypescriptTypesFile() {
   return typescriptFileContents;
 }
 
-function wrapValue(value) {
+function wrapValue(value: string | number): string | number {
   return typeof value === "string" ? `'${value}'` : value;
 }
 
-export default function (appVersion) {
-  _appVersion = appVersion;
+export default function (settings?: Settings): Migratta {
+  setSettings(settings);
   resetContext();
+
   return {
+    addAsyncScript,
+    addScript,
     addSql,
     addTableColumn,
     changeTableColumn,
@@ -317,13 +365,24 @@ export default function (appVersion) {
     createTable,
     deleteTableColumn,
     getMigrationRevisionSqlSelectQuery,
-    getMigrationTableSqlCreateQuery,
     getMigrationsSqlQueries,
-    getSqlDialect,
+    getMigrationTableSqlCreateQuery,
     getTypescriptTypesFile,
     recreateTable,
     removeTable,
+    renameTable,
     renameTableColumn,
-    setSqlDialect,
   };
 }
+
+export type {
+  Args,
+  Column,
+  ColumnParams,
+  ColumnType,
+  LatestMigration,
+  MigrationStep,
+  Migratta,
+  Settings,
+  Table,
+};
