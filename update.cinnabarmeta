@@ -1,0 +1,2 @@
+minor
+This version brings a breaking change: settings. Main entry function now accepts settings instead of version (appVersion, firstMigrationId (default 1), ignoreTransactionStatements (default false), useOldMigrationTableQuery (use this feature if you have used migratta before))
