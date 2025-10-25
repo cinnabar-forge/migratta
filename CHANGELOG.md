@@ -8,6 +8,23 @@ Visit the link above to see all unreleased changes.
 
 [comment]: # (Insert new version after this line)
 
+## [0.6.0](https://github.com/cinnabar-forge/migratta/releases/tag/v0.6.0) — 2025-10-25
+
+This version brings a breaking change: settings. Main entry function now accepts settings instead of version (appVersion, firstMigrationId (default 1), ignoreTransactionStatements (default false), useOldMigrationTableQuery (use this feature if you have used migratta before))Full list:
+
+- add renameTable ([246c936])
+- add settings ([246c936])
+- chore ([de015e5])
+- prepare release ([e0d5f60])
+- rewrite to typescript ([246c936])
+- update npm packages ([26539f2])
+
+[e0d5f60]: https://github.com/cinnabar-forge/migratta/commit/e0d5f60
+[de015e5]: https://github.com/cinnabar-forge/migratta/commit/de015e5
+[246c936]: https://github.com/cinnabar-forge/migratta/commit/246c936
+[26539f2]: https://github.com/cinnabar-forge/migratta/commit/26539f2
+
+
 ## [0.5.0](https://github.com/cinnabar-forge/migratta/releases/tag/v0.5.0) — 2025-01-20
 
 - add anca support ([2ccc0d0])
@@ -24,4 +41,4 @@ Visit the link above to see all unreleased changes.
 [2ccc0d0]: https://github.com/cinnabar-forge/migratta/commit/2ccc0d0
 
 
-[unreleased]: https://github.com/cinnabar-forge/migratta/compare/v0.5.0...HEAD
+[unreleased]: https://github.com/cinnabar-forge/migratta/compare/v0.6.0...HEAD
