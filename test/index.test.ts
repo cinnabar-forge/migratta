@@ -7,7 +7,7 @@ let migrations = cfMigrations();
 function createBaseMigration() {
   migrations = cfMigrations({
     appVersion: "0.1.0",
-    firstRevisionId: 0,
+    firstMigrationId: 0,
     useOldMigrationTableQuery: true,
   });
   migrations.createMigration();
@@ -26,10 +26,10 @@ describe("Static functions", () => {
       `CREATE TABLE IF NOT EXISTS "migrations" ("id" INTEGER NOT NULL PRIMARY KEY, "version" TEXT NOT NULL, "timestamp" INTEGER NOT NULL);`,
     );
   });
-  it("should return expected getMigrationRevisionSqlSelectQuery string", () => {
+  it("should return expected getLatestMigrationSqlSelectQuery string", () => {
     assert.strictEqual(
-      migrations.getMigrationRevisionSqlSelectQuery(),
-      `SELECT MAX("id") as "latest_revision", "version", "timestamp" FROM "migrations";`,
+      migrations.getLatestMigrationSqlSelectQuery(),
+      `SELECT MAX("id") as "id", "version", "timestamp" FROM "migrations";`,
     );
   });
   it("should return zero queries", () => {
@@ -42,7 +42,7 @@ describe("Adding SQL", () => {
   it("should add a SQL query", () => {
     migrations = cfMigrations({
       appVersion: "0.1.0",
-      firstRevisionId: 0,
+      firstMigrationId: 0,
       useOldMigrationTableQuery: true,
     });
     migrations.createMigration();

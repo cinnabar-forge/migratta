@@ -29,7 +29,7 @@ const db = new Database("./default.sqlite");
 // Init migrations object
 const migrations = cfMigrations({
   appVersion: "0.1.0",
-  firstRevisionId: 1,
+  firstMigrationId: 1,
   ignoreTransactionStatements: false,
 });
 
@@ -38,7 +38,7 @@ db.exec(migrations.getMigrationTableSqlCreateQuery());
 
 // Get latest migration revision
 const latestRevision = db
-  .prepare(migrations.getMigrationRevisionSqlSelectQuery())
+  .prepare(migrations.getLatestMigrationSqlSelectQuery())
   .get();
 
 // Initial migration (migration 0)

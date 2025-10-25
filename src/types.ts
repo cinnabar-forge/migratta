@@ -39,14 +39,14 @@ export interface CallbackMigrationStep {
 export type MigrationStep = SqlMigrationStep | CallbackMigrationStep;
 
 export interface LatestMigration {
-  latest_revision: number | null;
+  id: number | null;
   version: string;
   timestamp: number;
 }
 
 export interface Settings {
   appVersion?: string;
-  firstRevisionId?: number;
+  firstMigrationId?: number;
   ignoreTransactionStatements?: boolean;
   useOldMigrationTableQuery?: boolean;
 }
@@ -70,7 +70,7 @@ export type Migratta = {
   createMigration: () => void;
   createTable: (name: string, columns: Record<string, Column>) => void;
   deleteTableColumn: (tableName: string, columnName: string) => void;
-  getMigrationRevisionSqlSelectQuery: () => string;
+  getLatestMigrationSqlSelectQuery: () => string;
   getMigrationsSqlQueries: (
     latestMigration?: LatestMigration,
   ) => MigrationStep[];

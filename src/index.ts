@@ -34,7 +34,7 @@ function createMigration(): void {
         ? `INSERT INTO "migrations" ("revision", "app_version", "date_migrated") VALUES (?, ?, ?);`
         : `INSERT INTO "migrations" ("id", "version", "timestamp") VALUES (?, ?, ?);`,
       args: [
-        migrations.length + (settings?.firstRevisionId ?? 1),
+        migrations.length + (settings?.firstMigrationId ?? 1),
         settings.appVersion || "-",
         Math.round(Date.now() / 1000),
       ],
@@ -247,38 +247,37 @@ function getMigrationTableSqlCreateQuery(): string {
   return `CREATE TABLE IF NOT EXISTS "migrations" ("id" INTEGER NOT NULL PRIMARY KEY, "version" TEXT NOT NULL, "timestamp" INTEGER NOT NULL);`;
 }
 
-function getMigrationRevisionSqlSelectQuery(): string {
+function getLatestMigrationSqlSelectQuery(): string {
   return settings?.useOldMigrationTableQuery
-    ? `SELECT MAX("revision") as "latest_revision", "app_version" AS "version", "date_migrated" AS "timestamp" FROM "migrations";`
-    : `SELECT MAX("id") as "latest_revision", "version", "timestamp" FROM "migrations";`;
+    ? `SELECT MAX("revision") as "id", "app_version" AS "version", "date_migrated" AS "timestamp" FROM "migrations";`
+    : `SELECT MAX("id") as "id", "version", "timestamp" FROM "migrations";`;
 }
 
 function getMigrationsSqlQueries(
   latestMigration?: LatestMigration,
 ): MigrationStep[] {
-  const revisionOffset = settings?.firstRevisionId ?? 1;
-  const nextRevision = migrations.length + revisionOffset - 1;
-  const latestRevision =
-    latestMigration?.latest_revision || -1 + revisionOffset;
+  const offset = settings?.firstMigrationId ?? 1;
+  const target = migrations.length + offset - 1;
+
+  const initial = -1 + offset;
+  const latest = latestMigration?.id ?? initial;
 
   if (migrations.length === 0) {
     console.log("[migratta] no migrations found");
     return [];
   }
 
-  if (latestMigration?.latest_revision != null) {
+  if (latestMigration?.id != null) {
     console.log(
       `[migratta] last database migration: ${new Date(
         latestMigration.timestamp * 1000,
-      ).toISOString()} (r${latestMigration.latest_revision}, v${
-        latestMigration.version
-      })`,
+      ).toISOString()} (r${latestMigration.id}, v${latestMigration.version})`,
     );
   } else {
     console.log("[migratta] migration history is empty");
   }
 
-  if (latestRevision != null && latestRevision === nextRevision) {
+  if (latest != null && latest === target) {
     console.log("[migratta] database is up-to-date");
     return [];
   }
@@ -289,15 +288,11 @@ function getMigrationsSqlQueries(
     queries.push({ query: "BEGIN TRANSACTION;" });
   }
 
-  if (latestRevision < nextRevision) {
-    console.log(`[migratta] target migration revision ID: ${nextRevision}`);
-    for (
-      let revision = latestRevision + 1;
-      revision <= nextRevision;
-      revision++
-    ) {
-      if (migrations[revision - 1] != null) {
-        queries.push(...migrations[revision - 1]);
+  if (latest < target) {
+    console.log(`[migratta] target migration ID: ${target}`);
+    for (let migrationId = latest + 1; migrationId <= target; migrationId++) {
+      if (migrations[migrationId - offset] != null) {
+        queries.push(...migrations[migrationId - offset]);
       }
     }
   }
@@ -364,7 +359,7 @@ export default function (settings?: Settings): Migratta {
     createMigration,
     createTable,
     deleteTableColumn,
-    getMigrationRevisionSqlSelectQuery,
+    getLatestMigrationSqlSelectQuery,
     getMigrationsSqlQueries,
     getMigrationTableSqlCreateQuery,
     getTypescriptTypesFile,
