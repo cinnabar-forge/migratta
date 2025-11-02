@@ -32,7 +32,7 @@
     "check": "biome check ./src ./test",
     "fix": "biome check --fix --unsafe ./src ./test",
     "prepack": "npm run build",
-    "test": "npm run check && npm run build:dev && node --test './build/dev/test/**/*'"
+    "test": "npm run check && npm run build:dev && node --test './build/dev/test/index.test.js'"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
