@@ -604,7 +604,7 @@ describe("TypeScript types generation", () => {
       .toContext()
       .toTypeScript();
 
-    assert(types.includes("export class UsersTableItem"));
+    assert(types.includes("export interface UsersTableItem"));
     assert(types.includes("id: number;"));
     assert(types.includes("name: string;"));
     assert(types.includes("email?: string;"));
@@ -644,5 +644,62 @@ describe("Scripts and async scripts", () => {
 
     // should have callbackPromise in steps
     assert(steps.some((q) => q.callbackPromise !== undefined));
+  });
+});
+
+describe("Scripts and async scripts", () => {
+  it("should fall back to safe defaults when dialectVersion is invalid", () => {
+    const migratta = new Migratta({
+      dialect: "sqlite",
+      dialectVersion: "3.abc",
+    });
+    const steps = migratta
+      .migrate()
+      .table("x")
+      .column("y")
+      .drop()
+      .toContext()
+      .toArray();
+    // should recreate table safely instead of crashing
+    assert(steps.some((s) => s.query?.includes("x_tmp")));
+  });
+
+  it("should handle incomplete builder chain safely", () => {
+    const migratta = new Migratta();
+    assert.doesNotThrow(() =>
+      migratta.migrate().table("incomplete").toContext(),
+    );
+  });
+
+  it("should skip dropping non-existent column", () => {
+    const migratta = new Migratta();
+    const steps = migratta
+      .migrate()
+      .table("users")
+      .column("ghost")
+      .drop()
+      .toContext()
+      .toArray();
+    assert(!steps.some((s) => s.query?.includes("DROP COLUMN")));
+  });
+
+  it("should not duplicate interface definitions on multiple toTypeScript() calls", () => {
+    const migratta = new Migratta();
+    migratta
+      .migrate()
+      .table("users")
+      .create({ id: { type: "ID" } });
+    const first = migratta.toTypeScript();
+    const second = migratta.toTypeScript();
+    assert.strictEqual(first, second);
+  });
+
+  it("should not break when switching from old to new migration table mode", () => {
+    const m1 = new Migratta({ useOldMigrationTableQuery: true });
+    const m2 = new Migratta();
+    assert.notStrictEqual(
+      m1.getMigrationTableSelectSql(),
+      m2.getMigrationTableSelectSql(),
+    );
   });
 });

@@ -47,6 +47,11 @@ export class MigrationContext {
 
   constructor(private config: Config) {}
 
+  private log(...args: unknown[]): void {
+    if (this.config?.silent) return;
+    console.log("[migratta]", ...args);
+  }
+
   startMigration(): void {
     this.flushPendingActions();
 
@@ -77,12 +82,13 @@ export class MigrationContext {
     version: string,
   ): DialectCapabilities {
     if (dialect === "sqlite") {
-      const [major, minor] = version.split(".").map(Number);
+      const parts = (version || "3.0.0").split(".").map((v) => Number(v) || 0);
+      const [major = 3, minor = 0] = parts;
 
       return {
-        canDropColumn: major === 3 && minor >= 35, // SQLite 3.35.0+
-        canRenameColumn: major === 3 && minor >= 25, // SQLite 3.25.0+
-        canRenameTable: major === 3 && minor >= 25, // SQLite 3.25.0+
+        canDropColumn: major > 3 || (major === 3 && minor >= 35), // SQLite 3.35.0+
+        canRenameColumn: major > 3 || (major === 3 && minor >= 25), // SQLite 3.25.0+
+        canRenameTable: major > 3 || (major === 3 && minor >= 25), // SQLite 3.25.0+
       };
     }
 
@@ -101,7 +107,9 @@ export class MigrationContext {
       this.config.dialectVersion || "3.0.0",
     );
 
-    for (const [tableName, actions] of this.pendingTableActions) {
+    for (const [tableName, actions] of Array.from(
+      this.pendingTableActions.entries(),
+    )) {
       this.processPendingTableActions(tableName, actions, capabilities);
     }
 
@@ -128,20 +136,21 @@ export class MigrationContext {
     actions: TableAction[],
     capabilities: DialectCapabilities,
   ): boolean {
+    let requires = false;
     for (const action of actions) {
       switch (action.type) {
         case "create":
-          return false; // CREATE TABLE doesn't need recreation
+          break;
         case "drop":
-          return false; // DROP TABLE doesn't need recreation
+          break;
         case "dropColumn":
-          if (!capabilities.canDropColumn) return true;
+          if (!capabilities.canDropColumn) requires = true;
           break;
         case "renameColumn":
-          if (!capabilities.canRenameColumn) return true;
+          if (!capabilities.canRenameColumn) requires = true;
           break;
         case "rename":
-          if (!capabilities.canRenameTable) return true;
+          if (!capabilities.canRenameTable) requires = true;
           break;
         case "addColumn":
           if (
@@ -149,15 +158,17 @@ export class MigrationContext {
             action.column.primaryKey ||
             action.params?.fillFrom != null
           ) {
-            return true;
+            requires = true;
           }
           break;
         case "changeColumn":
           // column changes always need recreation in SQLite
-          return true;
+          requires = true;
+          break;
       }
+      if (requires) break;
     }
-    return false;
+    return requires;
   }
 
   private processTableAction(
@@ -186,11 +197,19 @@ export class MigrationContext {
       case "dropColumn":
         if (capabilities.canDropColumn) {
           this.dropColumn(tableName, action.columnName);
+        } else {
+          throw new Error(
+            `Dialect does not support DROP COLUMN for table "${tableName}".`,
+          );
         }
         break;
       case "renameColumn":
         if (capabilities.canRenameColumn) {
           this.renameColumn(tableName, action.oldName, action.newName);
+        } else {
+          throw new Error(
+            `Dialect does not support RENAME COLUMN for table "${tableName}".`,
+          );
         }
         break;
     }
@@ -200,10 +219,16 @@ export class MigrationContext {
     tableName: string,
     actions: TableAction[],
   ): void {
-    const workingState = {
-      ...this.tables[tableName],
-      columns: { ...this.tables[tableName].columns },
-      params: { ...this.tables[tableName].params },
+    const original = this.tables[tableName] ?? {
+      name: tableName,
+      columns: {},
+      params: {},
+    };
+
+    const workingState: TableState = {
+      name: original.name,
+      columns: { ...original.columns },
+      params: { ...original.params },
     };
 
     for (const action of actions) {
@@ -219,7 +244,7 @@ export class MigrationContext {
     const recreatedColumnPrevious: string[] = [];
 
     for (const columnName of Object.keys(workingState.columns)) {
-      const column = this.tables[tableName].columns[columnName];
+      const column = workingState.columns[columnName];
       const params = workingState.params[columnName] ?? {};
 
       if (column?.type === "ID") {
@@ -261,6 +286,10 @@ export class MigrationContext {
         delete state.params[action.columnName];
         break;
       case "renameColumn":
+        if (!state.columns[action.oldName]) {
+          // silently skip if old column missing to avoid crashing
+          return;
+        }
         state.columns[action.newName] = state.columns[action.oldName];
         delete state.columns[action.oldName];
         if (state.params[action.oldName]) {
@@ -281,13 +310,12 @@ export class MigrationContext {
 
   private createTable(name: string, columns: Record<string, Column>): void {
     if (this.tables[name] != null) {
-      delete this.tables[name];
-      this.addSql(`DROP TABLE IF EXISTS "${name}";`);
+      throw new Error(`Table "${name}" exists`);
     }
 
     this.tables[name] = {
       name,
-      columns: columns,
+      columns: { ...columns },
       params: {},
     };
 
@@ -295,14 +323,43 @@ export class MigrationContext {
   }
 
   private dropTable(name: string): void {
+    if (!this.tables[name]) {
+      this.addSql(`DROP TABLE IF EXISTS "${name}";`);
+      delete this.tables[name];
+      return;
+    }
+
     delete this.tables[name];
     this.addSql(`DROP TABLE "${name}";`);
   }
 
   private renameTable(oldName: string, newName: string): void {
-    this.tables[newName] = this.tables[oldName];
-    this.tables[newName].name = newName;
+    if (!this.tables[oldName]) {
+      throw new Error(
+        `Table "${oldName}" does not exist and cannot be renamed.`,
+      );
+    }
+
+    const state = this.tables[oldName];
+    this.tables[newName] = { ...state, name: newName };
     delete this.tables[oldName];
+
+    if (this.pendingTableActions.has(oldName)) {
+      const actions = this.pendingTableActions.get(oldName);
+      if (actions != null) {
+        this.pendingTableActions.delete(oldName);
+        this.pendingTableActions.set(newName, actions);
+      }
+    }
+
+    for (const [tblName, tblState] of Object.entries(this.tables)) {
+      for (const [colName, col] of Object.entries(tblState.columns)) {
+        if (col.type === "FOREIGN" && col.table === oldName) {
+          col.table = newName;
+        }
+      }
+    }
+
     this.addSql(`ALTER TABLE "${oldName}" RENAME TO "${newName}";`);
   }
 
@@ -312,9 +369,16 @@ export class MigrationContext {
     column: Column,
     params?: ColumnParams,
   ): void {
-    this.tables[tableName].columns[columnName] = column;
+    const table = this.tables[tableName];
+    if (!table) {
+      throw new Error(
+        `Table "${tableName}" does not exist. Cannot add column "${columnName}".`,
+      );
+    }
+
+    table.columns[columnName] = column;
     if (params) {
-      this.tables[tableName].params[columnName] = params;
+      table.params[columnName] = params;
     }
 
     this.addSql(
@@ -326,8 +390,15 @@ export class MigrationContext {
   }
 
   private dropColumn(tableName: string, columnName: string): void {
-    delete this.tables[tableName].columns[columnName];
-    delete this.tables[tableName].params[columnName];
+    const table = this.tables[tableName];
+    if (!table) {
+      throw new Error(
+        `Table "${tableName}" does not exist. Cannot drop column "${columnName}".`,
+      );
+    }
+
+    delete table.columns[columnName];
+    delete table.params[columnName];
     this.addSql(`ALTER TABLE "${tableName}" DROP COLUMN "${columnName}";`);
   }
 
@@ -336,14 +407,25 @@ export class MigrationContext {
     oldName: string,
     newName: string,
   ): void {
-    this.tables[tableName].columns[newName] =
-      this.tables[tableName].columns[oldName];
-    delete this.tables[tableName].columns[oldName];
+    const table = this.tables[tableName];
+    if (!table) {
+      throw new Error(
+        `Table "${tableName}" does not exist. Cannot rename column "${oldName}".`,
+      );
+    }
 
-    if (this.tables[tableName].params[oldName]) {
-      this.tables[tableName].params[newName] =
-        this.tables[tableName].params[oldName];
-      delete this.tables[tableName].params[oldName];
+    if (!table.columns[oldName]) {
+      throw new Error(
+        `Column "${oldName}" does not exist on table "${tableName}".`,
+      );
+    }
+
+    table.columns[newName] = table.columns[oldName];
+    delete table.columns[oldName];
+
+    if (table.params?.[oldName]) {
+      table.params[newName] = table.params[oldName];
+      delete table.params[oldName];
     }
 
     this.addSql(
@@ -353,21 +435,21 @@ export class MigrationContext {
 
   addSql(query: string, values?: QueryValue[]): void {
     if (!this.currentMigration) {
-      throw new Error("No active migration. Call .migration() first.");
+      throw new Error("No active migration. Call .migrate() first.");
     }
     this.currentMigration.push({ query, values });
   }
 
   addScript(callback: () => void): void {
     if (!this.currentMigration) {
-      throw new Error("No active migration. Call .migration() first.");
+      throw new Error("No active migration. Call .migrate() first.");
     }
     this.currentMigration.push({ callback });
   }
 
   addAsyncScript(callbackPromise: () => Promise<void>): void {
     if (!this.currentMigration) {
-      throw new Error("No active migration. Call .migration() first.");
+      throw new Error("No active migration. Call .migrate() first.");
     }
     this.currentMigration.push({ callbackPromise });
   }
@@ -381,7 +463,7 @@ export class MigrationContext {
     } else if (column.type === "FOREIGN") {
       columnQuery.push("INTEGER");
     } else {
-      columnQuery.push(column.type.toUpperCase());
+      columnQuery.push(String(column.type).toUpperCase());
 
       if (column.autoIncrement) {
         columnQuery.push("AUTOINCREMENT");
@@ -459,22 +541,22 @@ export class MigrationContext {
     const latest = latestMigration?.id ?? initial;
 
     if (this.migrations.length === 0) {
-      console.log("[migratta] no migrations found");
+      this.log("no migrations found");
       return [];
     }
 
     if (latestMigration?.id != null) {
-      console.log(
-        `[migratta] last database migration: ${new Date(
+      this.log(
+        `last database migration: ${new Date(
           latestMigration.timestamp * 1000,
         ).toISOString()} (r${latestMigration.id}, v${latestMigration.version})`,
       );
     } else {
-      console.log("[migratta] migration history is empty");
+      this.log("migration history is empty");
     }
 
     if (latest != null && latest === target) {
-      console.log("[migratta] database is up-to-date");
+      this.log("database is up-to-date");
       return [];
     }
 
@@ -487,10 +569,11 @@ export class MigrationContext {
     }
 
     if (latest < target) {
-      console.log(`[migratta] target migration ID: ${target}`);
+      this.log(`target migration ID: ${target}`);
       for (let migrationId = latest + 1; migrationId <= target; migrationId++) {
-        if (this.migrations[migrationId - offset] != null) {
-          steps.push(...this.migrations[migrationId - offset]);
+        const idx = migrationId - offset;
+        if (this.migrations[idx] != null) {
+          steps.push(...this.migrations[idx]);
         }
       }
     }
@@ -501,7 +584,7 @@ export class MigrationContext {
 
     steps.push({ query: "PRAGMA foreign_keys = ON;" });
 
-    console.log(`[migratta] ...${steps.length} step(s) have been generated`);
+    this.log(`...${steps.length} step(s) have been generated`);
 
     return steps;
   }
@@ -513,10 +596,10 @@ export class MigrationContext {
 
     for (const [tableName, table] of Object.entries(this.tables)) {
       const className = `${tableName.charAt(0).toUpperCase() + tableName.slice(1)}TableItem`;
-      typescriptFileContents += `export class ${className} {\n`;
+      typescriptFileContents += `export interface ${className} {\n`;
 
       for (const [columnName, column] of Object.entries(table.columns)) {
-        const notNull = !column.notNull && column.type !== "ID" ? "?" : "";
+        const optional = column.notNull || column.type === "ID" ? "" : "?";
         let type: string;
         switch (column.type) {
           case "ID":
@@ -531,7 +614,7 @@ export class MigrationContext {
             type = "unknown";
         }
 
-        typescriptFileContents += `  ${columnName}${notNull}: ${type};\n`;
+        typescriptFileContents += `  ${columnName}${optional}: ${type};\n`;
       }
 
       typescriptFileContents += "}\n\n";

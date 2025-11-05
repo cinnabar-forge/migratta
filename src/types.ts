@@ -24,6 +24,7 @@ export interface Config {
   firstMigrationId?: number;
   ignoreTransactionStatements?: boolean;
   useOldMigrationTableQuery?: boolean;
+  silent?: boolean;
 }
 
 export interface MigrationEntry {
