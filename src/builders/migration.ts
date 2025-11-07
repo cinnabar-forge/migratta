@@ -14,7 +14,7 @@ export class MigrationBuilder {
   }
 
   sql(query: string, values?: QueryValue[]): MigrationBuilder {
-    this.context.addSql(query, values);
+    this.context.addCustomSql(query, values);
     return this;
   }
 

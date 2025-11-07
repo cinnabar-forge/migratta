@@ -34,6 +34,8 @@ export class ColumnBuilder {
     this.context.addTableAction(this.tableName, {
       type: "dropColumn",
       columnName: this.columnName,
+      column:
+        this.context.getTables()[this.tableName]?.columns[this.columnName],
     });
     return this.parentBuilder;
   }

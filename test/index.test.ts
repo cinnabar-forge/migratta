@@ -647,7 +647,7 @@ describe("Scripts and async scripts", () => {
   });
 });
 
-describe("Scripts and async scripts", () => {
+describe("Extras", () => {
   it("should fall back to safe defaults when dialectVersion is invalid", () => {
     const migratta = new Migratta({
       dialect: "sqlite",

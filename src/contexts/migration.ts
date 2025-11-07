@@ -6,7 +6,7 @@ import type {
   QueryValue,
   Step,
 } from "../types.js";
-import { wrapValue } from "../utils.js";
+import { wrapColumn, wrapValue } from "../utils.js";
 
 interface DialectCapabilities {
   canDropColumn: boolean;
@@ -18,6 +18,7 @@ interface TableState {
   name: string;
   columns: Record<string, Column>;
   params: Record<string, ColumnParams>;
+  renameMappings?: Record<string, string>;
 }
 
 type TableAction =
@@ -36,7 +37,11 @@ type TableAction =
       column?: Column;
       params?: ColumnParams;
     }
-  | { type: "dropColumn"; columnName: string }
+  | {
+      type: "dropColumn";
+      columnName: string;
+      column: Column;
+    }
   | { type: "renameColumn"; oldName: string; newName: string };
 
 export class MigrationContext {
@@ -145,6 +150,12 @@ export class MigrationContext {
           break;
         case "dropColumn":
           if (!capabilities.canDropColumn) requires = true;
+          else if (
+            action.column.type === "ID" ||
+            action.column.type === "FOREIGN" ||
+            action.column.primaryKey
+          )
+            requires = true;
           break;
         case "renameColumn":
           if (!capabilities.canRenameColumn) requires = true;
@@ -257,7 +268,9 @@ export class MigrationContext {
       recreatedColumnPrevious.push(
         params.coalesce != null
           ? `COALESCE("${previous}", ${wrapValue(params.coalesce)})`
-          : `"${previous}"`,
+          : workingState.renameMappings?.[columnName] != null
+            ? `${wrapColumn(workingState.renameMappings?.[columnName])} AS ${wrapColumn(columnName)}`
+            : `"${previous}"`,
       );
     }
 
@@ -296,6 +309,10 @@ export class MigrationContext {
           state.params[action.newName] = state.params[action.oldName];
           delete state.params[action.oldName];
         }
+        if (state.renameMappings == null) {
+          state.renameMappings = {};
+        }
+        state.renameMappings[action.newName] = action.oldName;
         break;
       case "changeColumn":
         if (action.column) {
@@ -433,10 +450,18 @@ export class MigrationContext {
     );
   }
 
-  addSql(query: string, values?: QueryValue[]): void {
+  private addSql(query: string, values?: QueryValue[]): void {
     if (!this.currentMigration) {
       throw new Error("No active migration. Call .migrate() first.");
     }
+    this.currentMigration.push({ query, values });
+  }
+
+  addCustomSql(query: string, values?: QueryValue[]): void {
+    if (!this.currentMigration) {
+      throw new Error("No active migration. Call .migrate() first.");
+    }
+    this.flushPendingActions();
     this.currentMigration.push({ query, values });
   }
 
@@ -444,6 +469,7 @@ export class MigrationContext {
     if (!this.currentMigration) {
       throw new Error("No active migration. Call .migrate() first.");
     }
+    this.flushPendingActions();
     this.currentMigration.push({ callback });
   }
 
@@ -451,6 +477,7 @@ export class MigrationContext {
     if (!this.currentMigration) {
       throw new Error("No active migration. Call .migrate() first.");
     }
+    this.flushPendingActions();
     this.currentMigration.push({ callbackPromise });
   }
 
@@ -562,9 +589,8 @@ export class MigrationContext {
 
     const steps: Step[] = [];
 
-    steps.push({ query: "PRAGMA foreign_keys = OFF;" });
-
     if (!this.config?.ignoreTransactionStatements) {
+      steps.push({ query: "PRAGMA foreign_keys = OFF;" });
       steps.push({ query: "BEGIN TRANSACTION;" });
     }
 
@@ -580,9 +606,8 @@ export class MigrationContext {
 
     if (!this.config?.ignoreTransactionStatements) {
       steps.push({ query: "COMMIT TRANSACTION;" });
+      steps.push({ query: "PRAGMA foreign_keys = ON;" });
     }
-
-    steps.push({ query: "PRAGMA foreign_keys = ON;" });
 
     this.log(`...${steps.length} step(s) have been generated`);
 
