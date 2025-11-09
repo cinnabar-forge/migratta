@@ -19,6 +19,7 @@ interface TableState {
   columns: Record<string, Column>;
   params: Record<string, ColumnParams>;
   renameMappings?: Record<string, string>;
+  createdColumns?: Record<string, true>;
 }
 
 type TableAction =
@@ -263,6 +264,14 @@ export class MigrationContext {
       //   continue;
       // }
 
+      if (
+        workingState.createdColumns?.[columnName] != null &&
+        params.fillFrom == null &&
+        params.coalesce == null
+      ) {
+        continue;
+      }
+
       recreatedColumnCurrent.push(`"${columnName}"`);
 
       const previous = params.fillFrom ?? columnName;
@@ -294,6 +303,10 @@ export class MigrationContext {
         if (action.params) {
           state.params[action.columnName] = action.params;
         }
+        if (state.createdColumns == null) {
+          state.createdColumns = {};
+        }
+        state.createdColumns[action.columnName] = true;
         break;
       case "dropColumn":
         delete state.columns[action.columnName];
