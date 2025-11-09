@@ -258,9 +258,10 @@ export class MigrationContext {
       const column = workingState.columns[columnName];
       const params = workingState.params[columnName] ?? {};
 
-      if (column?.type === "ID") {
-        continue;
-      }
+      // save for possible option for flushing existing ids when recreating a table
+      // if (column?.type === "ID") {
+      //   continue;
+      // }
 
       recreatedColumnCurrent.push(`"${columnName}"`);
 
