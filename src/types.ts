@@ -1,6 +1,4 @@
-export type ColumnType = "ID" | "INTEGER" | "TEXT" | "FOREIGN";
-
-export type Args = string | number | boolean | null;
+// public
 
 export interface Column {
   type: ColumnType;
@@ -17,75 +15,45 @@ export interface ColumnParams {
   coalesce?: string | number;
 }
 
-export interface Table {
-  columns: Record<string, Column>;
-  params: Record<string, ColumnParams>;
+export type ColumnType = "ID" | "INTEGER" | "TEXT" | "FOREIGN";
+
+export interface Config {
+  appVersion?: string;
+  dialect?: "sqlite";
+  dialectVersion?: string;
+  firstMigrationId?: number;
+  ignoreTransactionStatements?: boolean;
+  useOldMigrationTableQuery?: boolean;
+  silent?: boolean;
 }
 
-export interface SqlMigrationStep {
-  query?: string;
-  args?: Args[];
-  callback?: never;
-  callbackPromise?: never;
-}
-
-export interface CallbackMigrationStep {
-  callback?: () => void;
-  callbackPromise?: () => Promise<void>;
-  query?: never;
-  args?: never;
-}
-
-export type MigrationStep = SqlMigrationStep | CallbackMigrationStep;
-
-export interface LatestMigration {
+export interface MigrationEntry {
   id: number | null;
   version: string;
   timestamp: number;
 }
 
-export interface Settings {
-  appVersion?: string;
-  firstMigrationId?: number;
-  ignoreTransactionStatements?: boolean;
-  useOldMigrationTableQuery?: boolean;
+export type QueryValue = string | number | boolean | null;
+
+export interface Table {
+  columns: Record<string, Column>;
+  params: Record<string, ColumnParams>;
 }
 
-export type Migratta = {
-  addAsyncScript: (callback: () => Promise<void>) => void;
-  addScript: (callback: () => void) => void;
-  addSql: (query: string, args?: Args[]) => void;
-  addTableColumn: (
-    tableName: string,
-    columnName: string,
-    column: Column,
-    params?: ColumnParams,
-  ) => void;
-  changeTableColumn: (
-    tableName: string,
-    columnName: string,
-    column?: Column,
-    params?: ColumnParams,
-  ) => void;
-  createMigration: () => void;
-  createTable: (name: string, columns: Record<string, Column>) => void;
-  deleteTableColumn: (tableName: string, columnName: string) => void;
-  getLatestMigrationSqlSelectQuery: () => string;
-  getMigrationsSqlQueries: (
-    latestMigration?: LatestMigration,
-  ) => MigrationStep[];
-  getMigrationTableSqlCreateQuery: () => string;
-  getTypescriptTypesFile: () => string;
-  recreateTable: (
-    tableName: string,
-    columns?: Record<string, Column> | null,
-    fromId?: boolean,
-  ) => void;
-  removeTable: (tableName: string) => void;
-  renameTable: (oldTableName: string, newTableName: string) => void;
-  renameTableColumn: (
-    tableName: string,
-    columnName: string,
-    newColumnName: string,
-  ) => void;
-};
+// internal
+
+export type Step = SqlStep | ScriptStep;
+
+export interface SqlStep {
+  query?: string;
+  values?: QueryValue[];
+  callback?: never;
+  callbackPromise?: never;
+}
+
+export interface ScriptStep {
+  callback?: () => void;
+  callbackPromise?: () => Promise<void>;
+  query?: never;
+  values?: never;
+}

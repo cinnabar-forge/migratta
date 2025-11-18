@@ -4,9 +4,19 @@ _By Cinnabar Forge_
 
 > **DISCLAIMER**: This project is not production ready. All versions below 1.0.0 should be considered unstable
 
-Database migrations library.
+A lightweight TypeScript library for defining and running database migrations in code.
 
-Currently SQLite-only.
+It offers a fully type-safe builder API and **TypeScript type generation** from your schema state.
+
+It supports SQLite only for now.
+
+## Features
+
+- **Fluent builder API** – define tables and columns with clear, chainable commands  
+- **Zero ORM** – pure SQL migrations, no runtime entities or models   
+- **Schema actions** – create, drop, rename, and alter tables or columns programmatically  
+- **Migration steps** – mix SQL, scripts, and async operations in one timeline  
+- **Type generation** – export schema as TypeScript types
 
 ## Installation
 
@@ -16,70 +26,61 @@ Currently SQLite-only.
 npm install migratta
 ```
 
-### Usage
+## Usage
 
-```javascript
-import fs from "node:fs";
-import Database from "better-sqlite3";
-import cfMigrations from "migratta";
+```typescript
+import { Migratta } from "migratta";
 
-// Init sqlite3 database
-const db = new Database("./default.sqlite");
-
-// Init migrations object
-const migrations = cfMigrations({
-  appVersion: "0.1.0",
-  firstMigrationId: 1,
-  ignoreTransactionStatements: false,
+// initialize object
+const migratta = new Migratta({
+  dialect: "sqlite",
+  dialectVersion: "3.50", // allows using new dialect features
 });
+```
 
-// Init migrations DB 'migrations' table
-db.exec(migrations.getMigrationTableSqlCreateQuery());
+### Create a table
 
-// Get latest migration revision
-const latestRevision = db
-  .prepare(migrations.getLatestMigrationSqlSelectQuery())
-  .get();
+```typescript
+// every migration starts with .migrate()
+// first migration: creating new table
+migratta.migrate()
+  .table("users")
+  .create({
+    id: { type: "ID", primaryKey: true, autoIncrement: true },
+    name: { type: "TEXT", notNull: true },
+    age: { type: "INTEGER" },
+  });
+```
 
-// Initial migration (migration 0)
-migrations.createMigration();
-migrations.createTable("species", {
-  id: { type: "ID" },
-  name: { default: "Unnamed species", notNull: true, type: "TEXT" },
-  origin: { type: "TEXT" },
-  population: { type: "INTEGER" },
-});
+### Alter a table
 
-// Rename column (migration 1)
-migrations.createMigration();
-migrations.renameTableColumn("species", "origin", "place_of_origin");
+```typescript
+// second migration: updating existing table
+migratta.migrate()
+  .table("users")
+  .addColumn("email", { type: "TEXT", unique: true });
+```
 
-// Create column (migration 2)
-migrations.createMigration();
-migrations.createTable("planets", {
-  id: { type: "ID" },
-  name: { default: "Unnamed planet", notNull: true, type: "TEXT" },
-  photo: { type: "BLOB" },
-});
+### Run raw SQL
 
-// Change column name and type (migration 3)
-migrations.createMigration();
-migrations.changeTableColumn("planets", "photo", { type: "TEXT" });
-migrations.recreateTable("planets");
+```typescript
+// third migration: run custom query
+migratta.migrate()
+  .sql("UPDATE users SET name = ? WHERE name = ?", ["Mary", "Msry"]);
+```
 
-// Generate Typescript types
-fs.writeFileSync("./types.ts", migrations.getTypescriptTypesFile());
+### Run async callback
 
-// Apply queries. This will apply all migrations that are not applied yet
-const queries = migrations.getMigrationsSqlQueries(latestRevision);
-console.log(queries);
-for (const query of queries) {
-  if (query.args) {
-    db.prepare(query.query).run(...query.args);
-  } else {
-    db.exec(query.query);
-  }
-}
+```typescript
+// fourth migration: run any logic as a migration step
+migratta.migrate()
+  .asyncScript(async () => {
+    const raw = await yourDbDriver.get(`SELECT * FROM users`);
+    const changed = await somethingToChange(raw);
+    for (const row of changed) {
+      await yourDbDriver.run(...)
+    }
+  });
 ```
 
 ## Contributing
