@@ -8,6 +8,10 @@ Visit the link above to see all unreleased changes.
 
 [comment]: # (Insert new version after this line)
 
+## [0.7.0](https://github.com/cinnabar-forge/migratta/releases/tag/v0.7.0) — 2025-11-18
+
+- Overhaul (#2)
+
 ## [0.6.0](https://github.com/cinnabar-forge/migratta/releases/tag/v0.6.0) — 2025-10-25
 
 This version brings a breaking change: settings. Main entry function now accepts settings instead of version (appVersion, firstMigrationId (default 1), ignoreTransactionStatements (default false), useOldMigrationTableQuery (use this feature if you have used migratta before))
@@ -43,4 +47,4 @@ Full list:
 [2ccc0d0]: https://github.com/cinnabar-forge/migratta/commit/2ccc0d0
 
 
-[unreleased]: https://github.com/cinnabar-forge/migratta/compare/v0.6.0...HEAD
+[unreleased]: https://github.com/cinnabar-forge/migratta/compare/v0.7.0...HEAD
