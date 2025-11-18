@@ -10,7 +10,9 @@ Visit the link above to see all unreleased changes.
 
 ## [0.6.0](https://github.com/cinnabar-forge/migratta/releases/tag/v0.6.0) — 2025-10-25
 
-This version brings a breaking change: settings. Main entry function now accepts settings instead of version (appVersion, firstMigrationId (default 1), ignoreTransactionStatements (default false), useOldMigrationTableQuery (use this feature if you have used migratta before))Full list:
+This version brings a breaking change: settings. Main entry function now accepts settings instead of version (appVersion, firstMigrationId (default 1), ignoreTransactionStatements (default false), useOldMigrationTableQuery (use this feature if you have used migratta before))
+
+Full list:
 
 - add renameTable ([246c936])
 - add settings ([246c936])
