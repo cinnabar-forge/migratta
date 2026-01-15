@@ -2,11 +2,13 @@ import type {
   Column,
   ColumnParams,
   Config,
+  JsonSchema,
+  JsonSchemaState,
   MigrationEntry,
   QueryValue,
   Step,
 } from "../types.js";
-import { wrapColumn, wrapValue } from "../utils.js";
+import { jsonSchemaToTypeScript, wrapColumn, wrapValue } from "../utils.js";
 
 interface DialectCapabilities {
   canDropColumn: boolean;
@@ -48,6 +50,7 @@ type TableAction =
 export class MigrationContext {
   private migrations: Step[][] = [];
   private tables: Record<string, TableState> = {};
+  private jsonSchemas: Record<string, JsonSchemaState> = {};
   private currentMigration: Step[] | null = null;
   private pendingTableActions: Map<string, TableAction[]> = new Map();
 
@@ -81,6 +84,18 @@ export class MigrationContext {
       this.pendingTableActions.set(tableName, []);
     }
     this.pendingTableActions.get(tableName)?.push(action);
+  }
+
+  addJsonSchema(name: string, schema: JsonSchema): void {
+    const existing = this.jsonSchemas[name];
+    const version = existing ? existing.version + 1 : 1;
+
+    this.jsonSchemas[name] = {
+      name,
+      schema,
+      version,
+      createdAt: Date.now(),
+    };
   }
 
   private getDialectCapabilities(
@@ -657,6 +672,18 @@ export class MigrationContext {
       }
 
       typescriptFileContents += "}\n\n";
+    }
+
+    // Generate JSON schema types
+    for (const [schemaName, schemaState] of Object.entries(this.jsonSchemas)) {
+      // Convert schema name to PascalCase (handle hyphens)
+      const pascalName = schemaName
+        .split("-")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join("");
+      const typeName = `${pascalName}Schema`;
+      const typeDef = jsonSchemaToTypeScript(schemaState.schema);
+      typescriptFileContents += `export type ${typeName} = ${typeDef};\n\n`;
     }
 
     typescriptFileContents += "// EOF\n";

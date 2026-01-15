@@ -40,6 +40,37 @@ export interface Table {
   params: Record<string, ColumnParams>;
 }
 
+export interface JsonSchema {
+  $schema?: string;
+  $ref?: string;
+  type?: string;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  items?: JsonSchema;
+  enum?: unknown[];
+  const?: unknown;
+  anyOf?: JsonSchema[];
+  allOf?: JsonSchema[];
+  oneOf?: JsonSchema[];
+  not?: JsonSchema;
+  format?: string;
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  description?: string;
+  title?: string;
+  default?: unknown;
+}
+
+export interface JsonSchemaState {
+  name: string;
+  schema: JsonSchema;
+  version: number;
+  createdAt: number;
+}
+
 // internal
 
 export type Step = SqlStep | ScriptStep;

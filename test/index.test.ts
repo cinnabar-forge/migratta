@@ -703,3 +703,242 @@ describe("Extras", () => {
     );
   });
 });
+
+describe("JSON Schema support", () => {
+  it("should define and store a JSON schema", () => {
+    const migratta = new Migratta({});
+
+    migratta
+      .migrate()
+      .jsonSchema("user-profile", {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          age: { type: "number" },
+        },
+        required: ["name"],
+      })
+      .toContext();
+
+    // Schema should be stored in context (we can access via toTypeScript)
+    const types = migratta.toTypeScript();
+    assert(types.includes("export type UserProfileSchema"));
+    assert(types.includes("name: string;"));
+    assert(types.includes("age?: number;"));
+  });
+
+  it("should generate TypeScript types for complex JSON schemas", () => {
+    const migratta = new Migratta({});
+
+    migratta
+      .migrate()
+      .jsonSchema("complex-schema", {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          tags: {
+            type: "array",
+            items: { type: "string" },
+          },
+          preferences: {
+            type: "object",
+            properties: {
+              theme: { type: "string", enum: ["light", "dark"] },
+              notifications: { type: "boolean" },
+            },
+          },
+          status: { type: "string", enum: ["active", "inactive"] },
+        },
+        required: ["id"],
+      })
+      .toContext();
+
+    const types = migratta.toTypeScript();
+    assert(types.includes("export type ComplexSchemaSchema"));
+    assert(types.includes("id: number;"));
+    assert(types.includes("tags?: string[];"));
+    assert(types.includes('theme?: "light" | "dark";'));
+    assert(types.includes("notifications?: boolean;"));
+    assert(types.includes('status?: "active" | "inactive";'));
+  });
+
+  it("should handle schema references ($ref)", () => {
+    const migratta = new Migratta({});
+
+    migratta
+      .migrate()
+      .jsonSchema("address", {
+        type: "object",
+        properties: {
+          street: { type: "string" },
+          city: { type: "string" },
+        },
+      })
+      .jsonSchema("user-with-address", {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          address: { $ref: "#/address" },
+        },
+      })
+      .toContext();
+
+    const types = migratta.toTypeScript();
+    assert(types.includes("export type AddressSchema"));
+    assert(types.includes("export type UserWithAddressSchema"));
+    assert(types.includes("address?: AddressSchema;"));
+  });
+
+  it("should replace schema when redefined", () => {
+    const migratta = new Migratta({});
+
+    // Define initial schema
+    migratta
+      .migrate()
+      .jsonSchema("test-schema", {
+        type: "object",
+        properties: { name: { type: "string" } },
+      })
+      .toContext();
+
+    // Redefine schema (should replace, not create new version)
+    migratta
+      .migrate()
+      .jsonSchema("test-schema", {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          age: { type: "number" },
+        },
+      })
+      .toContext();
+
+    const types = migratta.toTypeScript();
+    const schemaCount = (types.match(/export type TestSchemaSchema/g) || [])
+      .length;
+    assert.strictEqual(schemaCount, 1); // Should only have one definition
+    assert(types.includes("age?: number;")); // Should have the updated field
+  });
+
+  it("should handle schema with const values", () => {
+    const migratta = new Migratta({});
+
+    migratta
+      .migrate()
+      .jsonSchema("status-schema", {
+        const: "active",
+      })
+      .toContext();
+
+    const types = migratta.toTypeScript();
+    assert(types.includes('export type StatusSchemaSchema = "active";'));
+  });
+
+  it("should handle union types (anyOf, oneOf)", () => {
+    const migratta = new Migratta({});
+
+    migratta
+      .migrate()
+      .jsonSchema("flexible-value", {
+        anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
+      })
+      .toContext();
+
+    const types = migratta.toTypeScript();
+    assert(
+      types.includes(
+        "export type FlexibleValueSchema = string | number | boolean;",
+      ),
+    );
+  });
+
+  it("should handle schema references ($ref)", () => {
+    const migratta = new Migratta({});
+
+    migratta
+      .migrate()
+      .jsonSchema("address", {
+        type: "object",
+        properties: {
+          street: { type: "string" },
+          city: { type: "string" },
+        },
+      })
+      .jsonSchema("user-with-address", {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          address: { $ref: "#/address" },
+        },
+      })
+      .toContext();
+
+    const types = migratta.toTypeScript();
+    assert(types.includes("export type AddressSchema"));
+    assert(types.includes("export type UserWithAddressSchema"));
+    assert(types.includes("address?: AddressSchema;"));
+  });
+
+  it("should replace schema when redefined", () => {
+    const migratta = new Migratta({});
+
+    // Define initial schema
+    migratta
+      .migrate()
+      .jsonSchema("test-schema", {
+        type: "object",
+        properties: { name: { type: "string" } },
+      })
+      .toContext();
+
+    // Redefine schema (should replace, not create new version)
+    migratta
+      .migrate()
+      .jsonSchema("test-schema", {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          age: { type: "number" },
+        },
+      })
+      .toContext();
+
+    const types = migratta.toTypeScript();
+    const schemaCount = (types.match(/export type TestSchemaSchema/g) || [])
+      .length;
+    assert.strictEqual(schemaCount, 1); // Should only have one definition
+    assert(types.includes("age?: number;")); // Should have the updated field
+  });
+
+  it("should handle schema with const values", () => {
+    const migratta = new Migratta({});
+
+    migratta
+      .migrate()
+      .jsonSchema("status-schema", {
+        const: "active",
+      })
+      .toContext();
+
+    const types = migratta.toTypeScript();
+    assert(types.includes('export type StatusSchemaSchema = "active";'));
+  });
+
+  it("should handle union types (anyOf, oneOf)", () => {
+    const migratta = new Migratta({});
+
+    migratta
+      .migrate()
+      .jsonSchema("flexible-value", {
+        anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
+      })
+      .toContext();
+
+    const types = migratta.toTypeScript();
+    assert(
+      types.includes(
+        "export type FlexibleValueSchema = string | number | boolean;",
+      ),
+    );
+  });
+});

@@ -1,6 +1,6 @@
 import type { MigrationContext } from "../contexts/migration.js";
 import type { Migratta } from "../migratta.js";
-import type { QueryValue } from "../types.js";
+import type { JsonSchema, QueryValue } from "../types.js";
 import { TableBuilder } from "./table.js";
 
 export class MigrationBuilder {
@@ -11,6 +11,11 @@ export class MigrationBuilder {
 
   table(tableName: string): TableBuilder {
     return new TableBuilder(this.context, tableName, this);
+  }
+
+  jsonSchema(name: string, schema: JsonSchema): MigrationBuilder {
+    this.context.addJsonSchema(name, schema);
+    return this;
   }
 
   sql(query: string, values?: QueryValue[]): MigrationBuilder {
